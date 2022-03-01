@@ -17,11 +17,11 @@ type Event struct {
 }
 
 const (
-	host     = "localhost"
+	host     = "ec2-3-89-214-80.compute-1.amazonaws.com"
 	port     = 5432
-	user     = "postgres"
-	password = "root"
-	dbname   = "goblog"
+	user     = "zcmuimobqcsutt"
+	password = "424cfd55622a152e7264132b96ca12b3897f1615bdbab13e013543e4ea3e421e"
+	dbname   = "d7b94fk31tosjs"
 )
 
 func dbConn() (db *sql.DB) {
