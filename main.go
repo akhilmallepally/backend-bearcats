@@ -6,15 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
-)
-
-const (
-	DB_USER     = "postgres"
-	DB_PASSWORD = "root"
-	DB_NAME     = "bearcats"
 )
 
 type EventSummary struct {
@@ -32,7 +28,16 @@ type JsonResponse struct {
 }
 
 func setupDB() *sql.DB {
-	dbinfo := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", DB_USER, DB_PASSWORD, DB_NAME)
+	envMap, mapErr := godotenv.Read(".env")
+	if mapErr != nil {
+		fmt.Printf("Error loading .env into map[string]string\n")
+		os.Exit(1)
+	}
+
+	fmt.Printf("DB USER %s\n", envMap["DB_USER"])
+	fmt.Printf("DB PASS %s\n", envMap["DB_PASSWORD"])
+
+	dbinfo := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", envMap["DB_USER"], envMap["DB_PASSWORD"], envMap["DB_NAME"])
 	db, err := sql.Open("postgres", dbinfo)
 
 	checkErr(err)
@@ -125,6 +130,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 }
 func main() {
 	// Init the mux router
+
 	router := mux.NewRouter()
 
 	// Route handles & endpoints
