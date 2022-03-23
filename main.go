@@ -2,169 +2,137 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"text/template"
 
+	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 )
 
-type Event struct {
-	Id       int
-	Name     string
-	Location string
-}
-
 const (
-	host     = "ec2-3-89-214-80.compute-1.amazonaws.com"
-	port     = 5432
-	user     = "zcmuimobqcsutt"
-	password = "424cfd55622a152e7264132b96ca12b3897f1615bdbab13e013543e4ea3e421e"
-	dbname   = "d7b94fk31tosjs"
+	DB_USER     = "postgres"
+	DB_PASSWORD = "root"
+	DB_NAME     = "bearcats"
 )
 
-func dbConn() (db *sql.DB) {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-		"password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
-	db, err := sql.Open("postgres", psqlInfo)
-	if err != nil {
-		panic(err.Error())
-	}
+type EventSummary struct {
+	ID        int
+	Name      string
+	Location  string
+	Organizer string
+	Date      string
+}
+
+type JsonResponse struct {
+	Type    string         `json:"type"`
+	Data    []EventSummary `json:"data"`
+	Message string         `json:"message"`
+}
+
+func setupDB() *sql.DB {
+	dbinfo := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", DB_USER, DB_PASSWORD, DB_NAME)
+	db, err := sql.Open("postgres", dbinfo)
+
+	checkErr(err)
+
 	return db
 }
 
-var tmpl = template.Must(template.ParseGlob("form/*"))
+// Function for handling messages
+func printMessage(message string) {
+	fmt.Println("")
+	fmt.Println(message)
+	fmt.Println("")
+}
 
-func Index(w http.ResponseWriter, r *http.Request) {
-	db := dbConn()
-	selDB, err := db.Query("SELECT * FROM Event ORDER BY id DESC")
+// Function for handling errors
+func checkErr(err error) {
 	if err != nil {
-		panic(err.Error())
+		panic(err)
 	}
-	emp := Event{}
-	res := []Event{}
-	for selDB.Next() {
+}
+func getEvents(w http.ResponseWriter, r *http.Request) {
+	db := setupDB()
+	rows, err := db.Query(`select * from events`)
+	printMessage("getting events...")
+	checkErr(err)
+	var eves []EventSummary
+
+	for rows.Next() {
 		var id int
-		var name, location string
-		err = selDB.Scan(&id, &name, &location)
-		if err != nil {
-			panic(err.Error())
-		}
-		emp.Id = id
-		emp.Name = name
-		emp.Location = location
-		res = append(res, emp)
+		var name string
+		var location string
+		var organizer string
+		var date string
+
+		err = rows.Scan(&id, &name, &location, &organizer, &date)
+
+		checkErr(err)
+
+		eves = append(eves, EventSummary{Name: name, Location: location, Organizer: organizer, Date: date})
 	}
-	tmpl.ExecuteTemplate(w, "Index", res)
-	defer db.Close()
+	var response = JsonResponse{Type: "success", Data: eves}
+
+	json.NewEncoder(w).Encode(response)
 }
 
-func Show(w http.ResponseWriter, r *http.Request) {
-	db := dbConn()
-	nId := r.URL.Query().Get("id")
-	selDB, err := db.Query("SELECT * FROM Event WHERE id=?", nId)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+func DeleteOneEvent(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+
+	eventId := params["id"]
+
+	var response = JsonResponse{}
+
+	if eventId == "" {
+		response = JsonResponse{Type: "error", Message: "You are missing eventId parameter."}
+	} else {
+		db := setupDB()
+
+		printMessage("Deleting event from DB")
+
+		_, err := db.Exec("DELETE FROM events where id = $1", eventId)
+
+		// check errors
+		checkErr(err)
+
+		response = JsonResponse{Type: "success", Message: "The event has been deleted successfully!"}
 	}
-	emp := Event{}
-	for selDB.Next() {
-		var id int
-		var name, location string
-		err = selDB.Scan(&id, &name, &location)
-		if err != nil {
-			panic(err.Error())
-		}
-		emp.Id = id
-		emp.Name = name
-		emp.Location = location
-	}
-	tmpl.ExecuteTemplate(w, "Show", emp)
-	defer db.Close()
+
+	json.NewEncoder(w).Encode(response)
 }
 
-func New(w http.ResponseWriter, r *http.Request) {
-	tmpl.ExecuteTemplate(w, "New", nil)
+func DeleteEvents(w http.ResponseWriter, r *http.Request) {
+	db := setupDB()
+
+	printMessage("Deleting all events...")
+
+	_, err := db.Exec("DELETE FROM events")
+
+	// check errors
+	checkErr(err)
+
+	printMessage("All events have been deleted successfully!")
+
+	var response = JsonResponse{Type: "success", Message: "All events have been deleted successfully!"}
+
+	json.NewEncoder(w).Encode(response)
 }
 
-func Edit(w http.ResponseWriter, r *http.Request) {
-	db := dbConn()
-	nId := r.URL.Query().Get("id")
-	selDB, err := db.Query("SELECT * FROM Event WHERE id=?", nId)
-	if err != nil {
-		panic(err.Error())
-	}
-	emp := Event{}
-	for selDB.Next() {
-		var id int
-		var name, location string
-		err = selDB.Scan(&id, &name, &location)
-		if err != nil {
-			panic(err.Error())
-		}
-		emp.Id = id
-		emp.Name = name
-		emp.Location = location
-	}
-	tmpl.ExecuteTemplate(w, "Edit", emp)
-	defer db.Close()
+func home(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Home page")
 }
-
-func Insert(w http.ResponseWriter, r *http.Request) {
-	db := dbConn()
-	if r.Method == "POST" {
-		name := r.FormValue("name")
-		location := r.FormValue("location")
-		insForm, err := db.Prepare("INSERT INTO Event(name, location) VALUES(?,?)")
-		if err != nil {
-			panic(err.Error())
-		}
-		insForm.Exec(name, location)
-		log.Println("INSERT: Name: " + name + " | Location: " + location)
-	}
-	defer db.Close()
-	http.Redirect(w, r, "/", 301)
-}
-
-func Update(w http.ResponseWriter, r *http.Request) {
-	db := dbConn()
-	if r.Method == "POST" {
-		name := r.FormValue("name")
-		location := r.FormValue("location")
-		id := r.FormValue("uid")
-		insForm, err := db.Prepare("UPDATE Event SET name=?, location=? WHERE id=?")
-		if err != nil {
-			panic(err.Error())
-		}
-		insForm.Exec(name, location, id)
-		log.Println("UPDATE: Name: " + name + " | Location: " + location)
-	}
-	defer db.Close()
-	http.Redirect(w, r, "/", 301)
-}
-
-func Delete(w http.ResponseWriter, r *http.Request) {
-	db := dbConn()
-	emp := r.URL.Query().Get("id")
-	delForm, err := db.Prepare("DELETE FROM Event WHERE id=?")
-	if err != nil {
-		panic(err.Error())
-	}
-	delForm.Exec(emp)
-	log.Println("DELETE")
-	http.Redirect(w, r, "/", 301)
-	defer db.Close()
-}
-
 func main() {
-	log.Println("Server started on: http://localhost:8080")
-	http.HandleFunc("/", Index)
-	http.HandleFunc("/show", Show)
-	http.HandleFunc("/new", New)
-	http.HandleFunc("/edit", Edit)
-	http.HandleFunc("/insert", Insert)
-	http.HandleFunc("/update", Update)
-	http.HandleFunc("/delete", Delete)
-	http.ListenAndServe(":8080", nil)
+	// Init the mux router
+	router := mux.NewRouter()
+
+	// Route handles & endpoints
+	router.HandleFunc("/", home)
+	router.HandleFunc("/events", getEvents).Methods("GET")
+	router.HandleFunc("/events/{id}", DeleteOneEvent).Methods("DELETE")
+	router.HandleFunc("/events", DeleteEvents).Methods("DELETE")
+	// serve the app
+	fmt.Println("Server at 8081")
+	log.Fatal(http.ListenAndServe(":8081", router))
 }
