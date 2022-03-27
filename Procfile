@@ -1,1 +1,1 @@
-web: bin/backend-bearcats
+web: backend-bearcats

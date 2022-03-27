@@ -14,11 +14,11 @@ import (
 )
 
 type EventSummary struct {
-	EventId   string //`json:"eventid"`
-	Name      string //`json:"name"`
-	Location  string //`json:"location"`
-	Organizer string //`json:"organizer"`
-	Date      string //`json:"date"`
+	EventId   string `json:"eventid"`
+	Name      string `json:"name"`
+	Location  string `json:"location"`
+	Organizer string `json:"organizer"`
+	Date      string `json:"date"`
 }
 
 type JsonResponse struct {
@@ -98,8 +98,8 @@ func CreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Inserting new movie with ID: " + eventId + " event name" + eventName + " location name " + locationName + "organizer name" + organizerName + " with date " + dateVal)
 
-	var lastInsertID int
-	err := db.QueryRow(`INSERT INTO events(eventid, name, location, organizer, date) VALUES($1, $2, $3, $4, $5);`, eventId, eventName, locationName, organizerName, dateVal).Scan(&lastInsertID)
+	var eventid int
+	err := db.QueryRow(`INSERT INTO events(eventid, name, location, organizer, date) VALUES(default, $1, $2, $3, $4) returning eventid;`, eventName, locationName, organizerName, dateVal).Scan(&eventid)
 
 	// check errors
 	checkErr(err)
@@ -112,7 +112,7 @@ func CreateEvent(w http.ResponseWriter, r *http.Request) {
 func DeleteOneEvent(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 
-	eventId := params["eventid"]
+	eventId := params["EventId"]
 
 	var response = JsonResponse{}
 
@@ -123,7 +123,7 @@ func DeleteOneEvent(w http.ResponseWriter, r *http.Request) {
 
 		printMessage("Deleting event from DB")
 
-		_, err := db.Exec("DELETE FROM events where id = $1", eventId)
+		_, err := db.Exec("DELETE FROM events where eventid = $1", eventId)
 
 		// check errors
 		checkErr(err)
@@ -193,9 +193,16 @@ func main() {
 	router.HandleFunc("/", home)
 	router.HandleFunc("/events", getEvents).Methods("GET")
 	router.HandleFunc("/events", CreateEvent).Methods("POST")
-	router.HandleFunc("/events/{id}", DeleteOneEvent).Methods("DELETE")
+	router.HandleFunc("/events/{EventId}", DeleteOneEvent).Methods("DELETE")
 	router.HandleFunc("/events", DeleteEvents).Methods("DELETE")
 	// serve the app
-	fmt.Println("Server at 8081")
-	log.Fatal(http.ListenAndServe(":8081", router))
+	port, ok := os.LookupEnv("PORT")
+	if !ok {
+		port = "3000"
+	}
+
+	log.Print("Server listening on http://localhost:" + port)
+	if err := http.ListenAndServe("0.0.0.0:"+port, router); err != nil {
+		log.Fatalf("There was an error with the http server: " + err.Error())
+	}
 }
