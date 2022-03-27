@@ -14,11 +14,11 @@ import (
 )
 
 type EventSummary struct {
-	ID        int
-	Name      string
-	Location  string
-	Organizer string
-	Date      string
+	EventId   string //`json:"eventid"`
+	Name      string //`json:"name"`
+	Location  string //`json:"location"`
+	Organizer string //`json:"organizer"`
+	Date      string //`json:"date"`
 }
 
 type JsonResponse struct {
@@ -66,19 +66,45 @@ func getEvents(w http.ResponseWriter, r *http.Request) {
 	var eves []EventSummary
 
 	for rows.Next() {
-		var id int
+		var eventid string
 		var name string
 		var location string
 		var organizer string
 		var date string
 
-		err = rows.Scan(&id, &name, &location, &organizer, &date)
+		err = rows.Scan(&eventid, &name, &location, &organizer, &date)
 
 		checkErr(err)
 
-		eves = append(eves, EventSummary{Name: name, Location: location, Organizer: organizer, Date: date})
+		eves = append(eves, EventSummary{EventId: eventid, Name: name, Location: location, Organizer: organizer, Date: date})
 	}
 	var response = JsonResponse{Type: "success", Data: eves}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func CreateEvent(w http.ResponseWriter, r *http.Request) {
+	eventId := r.FormValue("eventid")
+	eventName := r.FormValue("name")
+	locationName := r.FormValue("location")
+	organizerName := r.FormValue("organizer")
+	dateVal := r.FormValue("date")
+
+	var response = JsonResponse{}
+
+	db := setupDB()
+
+	printMessage("Inserting movie into DB")
+
+	fmt.Println("Inserting new movie with ID: " + eventId + " event name" + eventName + " location name " + locationName + "organizer name" + organizerName + " with date " + dateVal)
+
+	var lastInsertID int
+	err := db.QueryRow(`INSERT INTO events(eventid, name, location, organizer, date) VALUES($1, $2, $3, $4, $5);`, eventId, eventName, locationName, organizerName, dateVal).Scan(&lastInsertID)
+
+	// check errors
+	checkErr(err)
+
+	response = JsonResponse{Type: "success", Message: "The movie has been inserted successfully!"}
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -86,7 +112,7 @@ func getEvents(w http.ResponseWriter, r *http.Request) {
 func DeleteOneEvent(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 
-	eventId := params["id"]
+	eventId := params["eventid"]
 
 	var response = JsonResponse{}
 
@@ -106,6 +132,36 @@ func DeleteOneEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func Edit(w http.ResponseWriter, r *http.Request) {
+	db := setupDB()
+	params := mux.Vars(r)
+
+	eventId := params["eventid"]
+	rows, err := db.Query("SELECT * FROM Employee WHERE id=?", eventId)
+	if err != nil {
+		panic(err.Error())
+	}
+	eves := EventSummary{}
+	for rows.Next() {
+		var eventid string
+		var name string
+		var location string
+		var organizer string
+		var date string
+
+		err = rows.Scan(&eventid, &name, &location, &organizer, &date)
+
+		checkErr(err)
+		eves.EventId = eventid
+		eves.Name = name
+		eves.Location = location
+		eves.Organizer = organizer
+		eves.Date = date
+		//eves = append(EventSummary{EventId: eventid, Name: name, Location: location, Organizer: organizer, Date: date})
+	}
+
 }
 
 func DeleteEvents(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +192,7 @@ func main() {
 	// Route handles & endpoints
 	router.HandleFunc("/", home)
 	router.HandleFunc("/events", getEvents).Methods("GET")
+	router.HandleFunc("/events", CreateEvent).Methods("POST")
 	router.HandleFunc("/events/{id}", DeleteOneEvent).Methods("DELETE")
 	router.HandleFunc("/events", DeleteEvents).Methods("DELETE")
 	// serve the app
